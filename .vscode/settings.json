@@ -1,0 +1,9 @@
+{
+  // Stop background Gradle imports in VS Code — they fight flutter builds
+  // for the Gradle lock, and this Flutter project needs no Java tooling.
+  // (Covers both the Red Hat Java extension and "Gradle for Java".)
+  "java.import.gradle.enabled": false,
+  "java.import.exclusions": ["**/android/**"],
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "gradle.autoDetect": "off"
+}
