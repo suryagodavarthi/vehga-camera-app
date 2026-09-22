@@ -1,7 +1,7 @@
 name: pronto_camera_app
 description: "Vehga field camera app: agency login, vehicle photo capture with location watermark, synced to whichever company the case belongs to (Vehga or Pronto)."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.11.4

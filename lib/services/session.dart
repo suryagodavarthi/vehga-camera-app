@@ -7,6 +7,7 @@ class Session {
   static const _kAgencyId = 'agencyId';
   static const _kAgencyName = 'agencyName';
   static const _kApiBaseUrl = 'apiBaseUrl';
+  static const _kRetiredUrlsCleared = 'retiredApiBaseUrlsCleared';
 
   final String agencyId;
   final String agencyName;
@@ -37,6 +38,15 @@ class Session {
 
   static Future<String> apiBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
+    // Once per install of this build: a saved address equal to an old default is a
+    // leftover from "Reset to default", not a choice, so follow the new default.
+    // Addresses typed in afterwards (a staging server, say) are kept.
+    if (!(prefs.getBool(_kRetiredUrlsCleared) ?? false)) {
+      if (kRetiredApiBaseUrls.contains(prefs.getString(_kApiBaseUrl))) {
+        await prefs.remove(_kApiBaseUrl);
+      }
+      await prefs.setBool(_kRetiredUrlsCleared, true);
+    }
     final url = prefs.getString(_kApiBaseUrl);
     if (url == null || url.isEmpty) return kDefaultApiBaseUrl;
     return url;
