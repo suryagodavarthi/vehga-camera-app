@@ -673,9 +673,12 @@ class _PhotoChecklistScreenState extends State<PhotoChecklistScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               [
+                if ((c.referenceNumber ?? '').isNotEmpty) c.referenceNumber!,
                 if ((c.applicantName ?? '').isNotEmpty) c.applicantName!,
                 if (c.applicantContact.isNotEmpty) c.applicantContact,
               ].join(' • '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13),
             ),
           ),

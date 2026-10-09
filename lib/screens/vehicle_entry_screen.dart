@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
-import 'offline_capture_screen.dart';
 import 'photo_checklist_screen.dart';
 
 class VehicleEntryScreen extends StatefulWidget {
@@ -14,24 +13,34 @@ class VehicleEntryScreen extends StatefulWidget {
 
 class _VehicleEntryScreenState extends State<VehicleEntryScreen> {
   final _vehicleController = TextEditingController();
+  final _uniqueIdController = TextEditingController();
+  final _uniqueIdFocus = FocusNode();
   bool _busy = false;
 
   @override
   void dispose() {
     _vehicleController.dispose();
+    _uniqueIdController.dispose();
+    _uniqueIdFocus.dispose();
     super.dispose();
   }
 
   Future<void> _search() async {
     final vehicleNumber = _vehicleController.text.trim();
+    final uniqueId = _uniqueIdController.text.trim();
     if (vehicleNumber.isEmpty) {
       _showMessage('Enter the vehicle number.');
+      return;
+    }
+    if (uniqueId.isEmpty) {
+      _showMessage('Enter the case Unique ID.');
+      _uniqueIdFocus.requestFocus();
       return;
     }
 
     setState(() => _busy = true);
     try {
-      final openCase = await ApiClient.findOpenCase(vehicleNumber);
+      final openCase = await ApiClient.findOpenCase(vehicleNumber, uniqueId);
       if (!mounted) return;
       if (openCase == null) {
         _showMessage('No open case found for "$vehicleNumber". '
@@ -40,40 +49,10 @@ class _VehicleEntryScreenState extends State<VehicleEntryScreen> {
       }
       Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => PhotoChecklistScreen(openCase: openCase)));
-    } on AmbiguousBrandException catch (e) {
-      await _showAmbiguousBrand(e);
     } on ApiException catch (e) {
       _showMessage(e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  /// The vehicle has an open case in both companies. Nothing the app can see
-  /// says which one the inspector is standing in front of, so it refuses to
-  /// guess and offers offline capture instead — a snackbar would be too easy
-  /// to miss for something that stops the inspection.
-  Future<void> _showAmbiguousBrand(AmbiguousBrandException e) async {
-    if (!mounted) return;
-    final goOffline = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.error_outline),
-        title: const Text('Case exists in both companies'),
-        content: Text(e.message),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Capture offline')),
-        ],
-      ),
-    );
-    if (goOffline == true && mounted) {
-      await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => const OfflineCaptureScreen()));
     }
   }
 
@@ -85,6 +64,15 @@ class _VehicleEntryScreenState extends State<VehicleEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Faint so the examples can't be mistaken for real values.
+    final faintHint = TextStyle(
+      color: Colors.grey.withValues(alpha: 0.25),
+      fontWeight: FontWeight.bold,
+      letterSpacing: 2,
+    );
+    const entryStyle =
+        TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2);
+
     return Scaffold(
       appBar: AppBar(
         title: Image.asset('assets/logo.png', height: 32),
@@ -99,8 +87,8 @@ class _VehicleEntryScreenState extends State<VehicleEntryScreen> {
               Text('Vehicle Number',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              const Text('Enter the vehicle registration number to load '
-                  'its open inspection case.'),
+              const Text('Enter the vehicle registration number and the '
+                  'case Unique ID given by the office.'),
               const SizedBox(height: 16),
               TextField(
                 controller: _vehicleController,
@@ -110,19 +98,34 @@ class _VehicleEntryScreenState extends State<VehicleEntryScreen> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 -]')),
                   UpperCaseTextFormatter(),
                 ],
-                style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2),
+                style: entryStyle,
                 textAlign: TextAlign.center,
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   hintText: 'AP07TM2457',
-                  // Faint so the example can't be mistaken for a real number.
-                  hintStyle: TextStyle(
-                    color: Colors.grey.withValues(alpha: 0.25),
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
+                  hintStyle: faintHint,
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _uniqueIdFocus.requestFocus(),
+              ),
+              const SizedBox(height: 24),
+              Text('Unique ID', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _uniqueIdController,
+                focusNode: _uniqueIdFocus,
+                textCapitalization: TextCapitalization.characters,
+                autocorrect: false,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 -]')),
+                  UpperCaseTextFormatter(),
+                ],
+                style: entryStyle,
+                textAlign: TextAlign.center,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'VG-123456-A',
+                  hintStyle: faintHint,
                   border: const OutlineInputBorder(),
                 ),
                 onSubmitted: (_) => _search(),

@@ -35,6 +35,14 @@ class OpenCase {
   /// multi-brand carry no brand at all, which the backend defines as Vehga.
   final String brand;
 
+  /// The case's Unique ID as the portal shows it, e.g. "VG-519499-K".
+  ///
+  /// Not part of the open-cases listing — that comes from the Workflows table,
+  /// and the reference lives on the Cosmos document — so it is null until
+  /// [ApiClient.findOpenCase] has fetched it and matched it to what the
+  /// inspector typed.
+  final String? referenceNumber;
+
   OpenCase({
     required this.valuationId,
     required this.vehicleNumber,
@@ -44,7 +52,20 @@ class OpenCase {
     this.workflow,
     this.workflowStepOrder = 0,
     this.brand = kBrandVehga,
+    this.referenceNumber,
   });
+
+  OpenCase withReference(String referenceNumber) => OpenCase(
+        valuationId: valuationId,
+        vehicleNumber: vehicleNumber,
+        applicantContact: applicantContact,
+        applicantName: applicantName,
+        status: status,
+        workflow: workflow,
+        workflowStepOrder: workflowStepOrder,
+        brand: brand,
+        referenceNumber: referenceNumber,
+      );
 
   factory OpenCase.fromJson(Map<String, dynamic> json) {
     String read(List<String> keys) {
@@ -75,4 +96,9 @@ class OpenCase {
 /// Uppercases and strips everything but letters/digits so
 /// "AP07 TM 2457", "ap07-tm-2457" and "AP07TM2457" all match.
 String normalizeVehicleNumber(String value) =>
+    value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+/// Same treatment for the Unique ID, so "vg 519499 k", "VG519499K" and
+/// "VG-519499-K" all match.
+String normalizeReference(String value) =>
     value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');

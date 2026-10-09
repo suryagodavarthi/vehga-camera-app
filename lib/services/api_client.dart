@@ -17,19 +17,6 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// The vehicle has an open case in both Vehga and Pronto, so the app cannot
-/// tell which company this inspection belongs to. Capture offline and let the
-/// office attach the photos to the right case.
-class AmbiguousBrandException extends ApiException {
-  final String vehicleNumber;
-
-  AmbiguousBrandException(this.vehicleNumber)
-      : super('$vehicleNumber has an open case in both Vehga and Pronto, so '
-            'this app cannot tell which one these photos belong to.\n\n'
-            'Please capture offline — the office will attach the photos to '
-            'the correct case.');
-}
-
 class ApiClient {
   /// Header naming the company a request belongs to, mirroring the portal's
   /// `X-Brand`. Sent on every call made against a known case, so the backend
@@ -71,20 +58,25 @@ class ApiClient {
   }
 
   /// GET /valuations/workflows/open — finds the open case whose vehicle
-  /// number matches [vehicleNumber] (ignoring spaces/dashes/case), and with it
-  /// the company that case belongs to.
+  /// number matches [vehicleNumber] (ignoring spaces/dashes/case) AND whose
+  /// Unique ID matches [uniqueId], and with it the company that case belongs
+  /// to.
   ///
   /// This is the one call that deliberately sends no `X-Brand`. The app has no
   /// brand until a case is found, so the lookup has to see both companies'
   /// cases to work out which one this vehicle belongs to — scoping it would
   /// defeat the detection it exists to perform.
   ///
-  /// Throws [AmbiguousBrandException] when the vehicle has an open case in
-  /// both companies. That is legitimate (the same vehicle can be inspected for
-  /// both), but nothing here can tell which one the inspector is standing in
-  /// front of, and guessing would file the whole inspection under the wrong
-  /// company. The AVO captures offline instead.
-  static Future<OpenCase?> findOpenCase(String vehicleNumber) async {
+  /// The Unique ID is what makes the match certain. A vehicle number alone can
+  /// name more than one open case — one in each company, since the same
+  /// vehicle can be inspected for both, or two in one — and before the ID the
+  /// app had to refuse the first and guess at the second. The ID names exactly
+  /// one case, so neither happens.
+  ///
+  /// Returns null when the vehicle has no open case at all. Throws
+  /// [ApiException] when it has one but the Unique ID belongs to none of them.
+  static Future<OpenCase?> findOpenCase(
+      String vehicleNumber, String uniqueId) async {
     final base = await Session.apiBaseUrl();
     final http.Response res;
     try {
@@ -114,12 +106,48 @@ class ApiClient {
 
     if (matches.isEmpty) return null;
 
-    // Two cases under one company is not ambiguous — the brand is still
-    // certain — so only a split across companies is refused.
-    final brands = matches.map((c) => c.brand).toSet();
-    if (brands.length > 1) throw AmbiguousBrandException(vehicleNumber);
+    final wantedRef = normalizeReference(uniqueId);
+    final refs = await Future.wait(matches.map(_getReference));
+    for (var i = 0; i < matches.length; i++) {
+      final ref = refs[i];
+      if (ref != null && normalizeReference(ref) == wantedRef) {
+        return matches[i].withReference(ref);
+      }
+    }
 
-    return matches.first;
+    throw ApiException('Unique ID "$uniqueId" does not match the open case '
+        'for "$vehicleNumber". Check both with the office.');
+  }
+
+  /// GET /valuations/{id}/reference — the case's Unique ID, the same call the
+  /// portal makes to show it. Idempotent: it returns the stored reference and
+  /// assigns one only for an old case that never had one, exactly as opening
+  /// that case in the portal would. Null when the case document is missing.
+  static Future<String?> _getReference(OpenCase c) async {
+    final base = await Session.apiBaseUrl();
+    final http.Response res;
+    try {
+      res = await http
+          .get(
+              Uri.parse('$base/valuations/${c.valuationId}/reference'
+                  '?vehicleNumber=${Uri.encodeQueryComponent(c.vehicleNumber)}'
+                  '&applicantContact=${Uri.encodeQueryComponent(c.applicantContact)}'),
+              headers: _headers(c))
+          .timeout(const Duration(seconds: 30));
+    } on Exception {
+      throw ApiException(
+          'Could not reach the server. Check your internet connection.');
+    }
+
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) {
+      throw ApiException('Unique ID check failed (HTTP ${res.statusCode}).');
+    }
+
+    final data = jsonDecode(res.body);
+    if (data is! Map<String, dynamic>) return null;
+    final ref = (data['referenceNumber'] ?? data['ReferenceNumber'])?.toString();
+    return (ref == null || ref.isEmpty) ? null : ref;
   }
 
   /// GET /valuations/{id}/photos — URLs of everything already uploaded for
